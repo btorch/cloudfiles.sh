@@ -7,6 +7,15 @@
 # Relies on curl and a few common Unix-y tools (file, basename, sed, tr)
 #
 # Written by Mike Barton (mike@weirdlooking.com), based on work by letterj.
+#
+#
+# Changes:
+#       01-30-2011  -   Added ability to auth against UK CloudFiles    
+#                   -   Added double quotes to if/else blocks using single brackets
+#                   -   Added -o /dev/null to the PUT/MKDIR/RM* scurl calls
+#                   -   Added a container check function to make sure name starts with "/"
+#                   -   Added some more verbose to error code checks
+#
 
 function usage {
   echo "Usage: $0 [Username] [API Key] LS"
@@ -16,6 +25,11 @@ function usage {
   echo "       $0 [Username] [API Key] MKDIR [/container]"
   echo "       $0 [Username] [API Key] RM [/container/object]"
   echo "       $0 [Username] [API Key] RMDIR [/container]"
+  echo " "
+  echo "      Note: "
+  echo "           Prefix Username with \"REGION:\" for Europe use \"UK:\" and for North America use \"US:\" "
+  echo "           eg: UK:joedoe , US:joedoe (US is optional since it's the default) " 
+  echo " "
   exit 1
 }
 
@@ -23,20 +37,42 @@ function scurl {
   curl -s -g -w '%{http_code}' -H Expect: -H "X-Auth-Token: $TOKEN" -X "$@"
 }
 
-if [ -z $1 ] || [ -z $2 ] || [ -z $3 ]; then
+function container_check {
+  if [[ ! $1 =~ ^/ ]]; then
+    echo -e "\n\t Error: container name must start with a \"/\" \n" 
+    usage
+  fi
+}
+
+
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
   usage
 else
-  LOGIN=`curl --dump-header - -s -H "X-Auth-User: $1" \
-         -H "X-Auth-Key: $2" "https://auth.api.rackspacecloud.com/v1.0"`
+
+  if [[ $1 =~ ^UK: ]]; then 
+    AUTHURL="https://lon.auth.api.rackspacecloud.com/v1.0"
+    USER=`echo $1 | sed 's/^UK://' | tr -d "\r\n"`
+  elif [[ $1 =~ ^US: ]]; then 
+    AUTHURL="https://auth.api.rackspacecloud.com/v1.0"
+    USER=`echo $1 | sed 's/^US://' | tr -d "\r\n"`
+  else  
+    # Default is US 
+    AUTHURL="https://auth.api.rackspacecloud.com/v1.0" 
+    USER=$1
+  fi
+
+  LOGIN=`curl --dump-header - -s -H "X-Auth-User: $USER" -H "X-Auth-Key: $2" "$AUTHURL"`
   TOKEN=`echo "$LOGIN" | grep ^X-Auth-Token | sed 's/.*: //' | tr -d "\r\n"`
   URL=`echo "$LOGIN" | grep ^X-Storage-Url | sed 's/.*: //' | tr -d "\r\n"`
-  if [ -z $TOKEN ] || [ -z $URL ]; then
-    echo "Unable to auth."
+
+  if [ -z "$TOKEN" ] || [ -z "$URL" ]; then
+    echo -e "\n\t Unable to authenticate \n"
     exit 1
   fi
-  case $3 in
+
+  case "$3" in
     LS)
-      if [ -z $4 ]; then
+      if [ -z "$4" ]; then
         curl -s -o - -H "Expect:" -H "X-Auth-Token: $TOKEN" "$URL"
       else
         curl -s -o - -H "Expect:" -H "X-Auth-Token: $TOKEN" "$URL/$4"
@@ -44,23 +80,44 @@ else
       exit 0
       ;;
     GET)
+      container_check $4 
       OBJNAME=`basename "$4"`
-      CODE=`scurl GET "$URL$4" -o "$OBJNAME" -i -v`
+      CODE=`scurl GET "$URL$4" -o "$OBJNAME" `
       ;;
     PUT)
-      if [ ! -f $5 ]; then
+      if [ ! -f "$5" ]; then
         usage
       fi
       TYPE=`file -bi "$5"`
       OBJNAME=`basename "$5"`
-      CODE=`scurl PUT -H "Content-Type: $TYPE" -T "$5" "$URL/$4/$OBJNAME"`
+      CODE=`scurl PUT -o /dev/null -H "Content-Type: $TYPE" -T "$5" "$URL/$4/$OBJNAME"`
       ;;
-    MKDIR) CODE=`scurl PUT -T /dev/null "$URL/$4"`;;
-    RM*) CODE=`scurl DELETE "$URL/$4"`;;
-    *) usage
-    esac
-  if [ $CODE -lt 200 ] || [ $CODE -gt 299 ]; then
-    echo "Invalid response code: $CODE"
+    MKDIR)
+      container_check $4 
+      CODE=`scurl PUT "$URL$4" -T /dev/null -o /dev/null`
+      ;;
+    RM*) 
+      container_check $4 
+      CODE=`scurl DELETE "$URL$4" -o /dev/null`
+      ;;
+    *) 
+      usage
+      ;;
+  esac
+
+
+  if [[ $CODE -lt 200 ]] || [[ $CODE -gt 299 ]]; then
+
+    if [[ $CODE -eq 409 ]] && [[ $3 == "RMDIR" ]]; then
+      echo -e "\n\t Error code ($CODE): Sorry ... Directory not empty \n"
+    elif [[ $CODE -eq 404 ]] && [[ $3 == "RMDIR" ]]; then
+      echo -e "\n\t Error code ($CODE): Sorry ... Directory not found \n"
+    elif [[ $CODE -eq 404 ]] && [[ $3 == "RM" ]]; then
+      echo -e "\n\t Error code ($CODE): Sorry ... File not found \n"
+    else
+      echo -e "\n\t Invalid response code: $CODE \n"
+    fi 
+
     exit 1
   fi
 fi
