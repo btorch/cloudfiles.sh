@@ -3,13 +3,15 @@
 # cloudfiles.sh
 #
 # Provides simple command-line access to Cloud Files.
+# Relies on curl and a few common Unix-y tools (file, basename, sed, tr, awk)
 #
-# Relies on curl and a few common Unix-y tools (file, basename, sed, tr)
+# Originally written by Mike Barton (mike@weirdlooking.com), based on work by letterj.
 #
-# Written by Mike Barton (mike@weirdlooking.com), based on work by letterj.
+# Changes by Marcelo Martins:
 #
 #
-# Changes:
+#       02-04-2011  -   Added INFO to set of commands     
+#
 #       01-30-2011  -   Added ability to auth against UK CloudFiles    
 #                   -   Added double quotes to if/else blocks using single brackets
 #                   -   Added -o /dev/null to the PUT/MKDIR/RM* scurl calls
@@ -20,6 +22,7 @@
 function usage {
   echo "Usage: $0 [Username] [API Key] LS"
   echo "       $0 [Username] [API Key] LS [container]"
+  echo "       $0 [Username] [API Key] INFO [container] or [container]/[file]"
   echo "       $0 [Username] [API Key] PUT [container] [local file]"
   echo "       $0 [Username] [API Key] GET [/container/object]"
   echo "       $0 [Username] [API Key] MKDIR [/container]"
@@ -99,6 +102,13 @@ else
     RM*) 
       container_check $4 
       CODE=`scurl DELETE "$URL$4" -o /dev/null`
+      ;;
+    INFO)
+      if [ ! -z "$4" ]; then
+      #curl -s -I -o - -H "Expect:" -H "X-Auth-Token: $TOKEN" -X HEAD $URL/ | awk '/^X/'  
+      curl -s -I -o - -H "X-Auth-Token: $TOKEN" -X HEAD "$URL/$4" | awk '!/^HTTP/'  
+      exit 0
+      fi
       ;;
     *) 
       usage
