@@ -10,6 +10,9 @@
 # Changes by Marcelo Martins:
 #
 #
+#       02-06-2011  -   Changed INFO to look for 404s      
+#                   -   Added a new 404/INFO code check at end of script    
+#
 #       02-04-2011  -   Added INFO to set of commands     
 #
 #       01-30-2011  -   Added ability to auth against UK CloudFiles    
@@ -106,8 +109,15 @@ else
     INFO)
       if [ ! -z "$4" ]; then
       #curl -s -I -o - -H "Expect:" -H "X-Auth-Token: $TOKEN" -X HEAD $URL/ | awk '/^X/'  
-      curl -s -I -o - -H "X-Auth-Token: $TOKEN" -X HEAD "$URL/$4" | awk '!/^HTTP/'  
-      exit 0
+      #curl -s -I -o - -H "X-Auth-Token: $TOKEN" -X HEAD "$URL/$4" | awk '!/^HTTP/'  
+      RESULTS=`curl -s -I -H "X-Auth-Token: $TOKEN" -X HEAD "$URL/$4" 2>&1`
+      CODE_CHECK=`echo "$RESULTS" | head -n 1| awk '/404/'`
+        if [ -z "$CODE_CHECK" ]; then 
+          echo "$RESULTS" | awk '!/^HTTP/' 
+          exit 0
+        else
+          CODE="404"
+        fi
       fi
       ;;
     *) 
@@ -124,6 +134,8 @@ else
       echo -e "\n\t Error code ($CODE): Sorry ... Directory not found \n"
     elif [[ $CODE -eq 404 ]] && [[ $3 == "RM" ]]; then
       echo -e "\n\t Error code ($CODE): Sorry ... File not found \n"
+    elif [[ $CODE -eq 404 ]] && [[ $3 == "INFO" ]]; then
+      echo -e "\n\t Error code ($CODE): Sorry ... File/Directory not found \n"
     else
       echo -e "\n\t Invalid response code: $CODE \n"
     fi 
