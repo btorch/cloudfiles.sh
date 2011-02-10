@@ -1,2 +1,10 @@
-cloudfiles.sh is a bash script that provides command-line access to
-basic functions of Mosso's Cloud Files, via curl.
+
+- INFO
+    . cloudfiles.sh is a bash script that provides command-line access to basic functions of Cloud Files, via curl.
+    . 
+
+- TODO (Marcelo Martins
+    . Need to add some more error checking on file_upload function
+    . Add retry if the http_code returned is 503
+    . Need to create a container if one does not exist while trying to upload new file
+
