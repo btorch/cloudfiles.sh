@@ -167,8 +167,6 @@ else
       ;;
     INFO)
       if [ ! -z "$4" ]; then
-      #curl -s -I -o - -H "Expect:" -H "X-Auth-Token: $TOKEN" -X HEAD $URL/ | awk '/^X/'  
-      #curl -s -I -o - -H "X-Auth-Token: $TOKEN" -X HEAD "$URL/$4" | awk '!/^HTTP/'  
       RESULTS=`curl -s -I -H "X-Auth-Token: $TOKEN" -X HEAD "$URL/$4" 2>&1`
       CODE_CHECK=`echo "$RESULTS" | head -n 1| awk '/404/'`
         if [ -z "$CODE_CHECK" ]; then 
