@@ -9,6 +9,7 @@
 #
 # Changes by Marcelo Martins:
 #
+#       02-10-2011  -   Added a file_upload function that also supports big files (5GB)
 #
 #       02-06-2011  -   Changed INFO to look for 404s      
 #                   -   Added a new 404/INFO code check at end of script    
@@ -43,12 +44,72 @@ function scurl {
   curl -s -g -w '%{http_code}' -H Expect: -H "X-Auth-Token: $TOKEN" -X "$@"
 }
 
+
 function container_check {
   if [[ ! $1 =~ ^/ ]]; then
     echo -e "\n\t Error: container name must start with a \"/\" \n" 
     usage
   fi
 }
+
+
+function file_upload {
+
+  CONTAINER=$1
+  FILENAME=$2
+  FILETYPE=`file -bi "$FILENAME"`
+  OBJNAME=`basename "$FILENAME"`
+
+  CURDIR=`pwd`                # The directory where the temporary splited files will reside
+  CHUNKSIZE="4831838208"      # Size of each split chunk (4.5GB)
+  SPLITSUFFIX=8                
+
+  # Check that stat is GNU version or another like BSD (assumption)
+  GNU=`stat --version 2>&1 | head -n 1  | awk '/GNU/'`
+  if [ ! -z "$GNU" ]; then 
+    FILESIZE=`stat -c%s $FILENAME | tr -d '\n\r' `
+  else
+    FILESIZE=`stat -f%z $FILENAME | tr -d '\n\r' `
+  fi
+
+  if [[ $? -eq 1 ]]; then 
+    echo -e "\t Unable to obtain file size \n"
+    exit 1
+  fi 
+
+  if [[ $FILESIZE -gt $CHUNKSIZE ]]; then
+    if [ ! -d $CURDIR/cf-tmp ]; then 
+      mkdir $CURDIR/cf-tmp
+    fi 
+
+    split -b $CHUNKSIZE -d -a $SPLITSUFFIX  $FILENAME $CURDIR/cf-tmp/
+    SEGMENTS=`ls -1 $CURDIR/cf-tmp/*` 
+    CONTAINER_SEG=$CONTAINER"_segments"
+
+    for segment in $SEGMENTS; do 
+      SEGFILE=`basename "$segment"`
+      echo " Uploading file segment : $SEGFILE"
+      curl -k -s -g -o /dev/null -H "X-Auth-Token: $TOKEN" -X PUT "$URL/$CONTAINER_SEG"
+      sleep 1
+      curl -k -s -g -o /dev/null -T "$segment" -H "X-Auth-Token: $TOKEN" -H "Transfer-Encoding: chunked" -X PUT "$URL/$CONTAINER_SEG/$OBJNAME/$SEGFILE"
+    done
+
+    echo " Uploading manifest file: $OBJNAME "
+    CODE=`scurl PUT -o /dev/null -H "X-Object-Manifest: $CONTAINER_SEG/$OBJNAME/" --data-binary '' "$URL/$CONTAINER/$OBJNAME" `
+
+  else 
+    echo " Uploading file: $OBJNAME "
+    CODE=`scurl PUT -o /dev/null -H "Content-Type: $FILETYPE" -T "$FILENAME" "$URL/$CONTAINER/$OBJNAME"`
+  fi
+
+  if [ -d $CURDIR/cf-tmp ]; then
+    echo " Removing temporary directory & files "
+    rm -rf  $CURDIR/cf-tmp
+  fi   
+}
+
+
+
 
 
 if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
@@ -94,9 +155,7 @@ else
       if [ ! -f "$5" ]; then
         usage
       fi
-      TYPE=`file -bi "$5"`
-      OBJNAME=`basename "$5"`
-      CODE=`scurl PUT -o /dev/null -H "Content-Type: $TYPE" -T "$5" "$URL/$4/$OBJNAME"`
+      file_upload $4 $5
       ;;
     MKDIR)
       container_check $4 
