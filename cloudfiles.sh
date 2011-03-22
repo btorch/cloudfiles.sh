@@ -2,7 +2,7 @@
 
 # cloudfiles.sh
 #
-# Provides simple command-line access to Cloud Files.
+# Provides simple command-line access to Rackspace CloudFiles.
 # Relies on curl and a few common Unix-y tools (file, basename, sed, tr, awk)
 #
 # Originally written by Mike Barton (mike@weirdlooking.com), based on work by letterj.
